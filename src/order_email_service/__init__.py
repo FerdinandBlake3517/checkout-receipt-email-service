@@ -1,0 +1,2 @@
+"""Checkout receipt email service."""
+
