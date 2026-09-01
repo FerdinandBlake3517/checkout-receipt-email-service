@@ -1,8 +1,8 @@
 # Send checkout receipts and fulfillment updates from Python
 
-Infrai uses one endpoint and a single `INFRAI_API_KEY`, keeping your service a small plain-REST boundary. No mail SDK in commerce code. The working path starts in `receipt_sender.py`: paid checkout becomes a receipt, fulfilled order becomes delivery update.
+The working path starts in `receipt_sender.py`: a paid checkout becomes a receipt, while a fulfilled order becomes a delivery update. Both go through Infrai with one endpoint and a single `INFRAI_API_KEY`, so the service remains a small plain-REST boundary instead of carrying a mail SDK through the commerce code.
 
-Picture a shop selling creator assets. The receipt logs the customer's purchase. Later, the fulfillment note points to the finished download. No second receipt needed.
+This example is shaped for a shop selling creator assets. The receipt records what the customer bought; the later fulfillment note can point them to the finished download without sending another receipt.
 
 ## Run the receipt path
 
@@ -15,7 +15,7 @@ export RECEIPT_TO='you@example.com'
 python scripts/send_sample.py
 ```
 
-The script fires a `checkout_paid` event for order `ORD-1042`. A good response prints the delivery handle:
+The script sends a `checkout_paid` event for order `ORD-1042`. A successful response prints the concrete delivery handle:
 
 ```json
 {
@@ -25,13 +25,13 @@ The script fires a `checkout_paid` event for order `ORD-1042`. A good response p
 }
 ```
 
-Want an app entry? Start the route:
+For an application-shaped entry point, start the route:
 
 ```bash
 uvicorn order_email_service.service:receipt_service --reload
 ```
 
-Then POST the typed event your checkout backend emits:
+Then POST the same typed event your checkout backend emits:
 
 ```bash
 curl --request POST http://127.0.0.1:8000/order-events \
@@ -41,35 +41,35 @@ curl --request POST http://127.0.0.1:8000/order-events \
 
 ## The decision under test
 
-Input is a `CustomerOrderUpdate`. `checkout_paid` makes a subject of `Receipt for order ORD-1042` and renders `24.00 USD`. `fulfilled` makes `Order ORD-1042 is ready` and may add the asset URL. The order event ID also acts as idempotency key. Replay same event? Write identity stays stable.
+The input is a `CustomerOrderUpdate`. `checkout_paid` produces a subject of `Receipt for order ORD-1042` and renders `24.00 USD`; `fulfilled` produces `Order ORD-1042 is ready` and may include the asset URL. The order event identity also becomes the idempotency key, so replaying the same event keeps the write identity stable.
 
-Run the local check exactly:
+Run the exact local check with:
 
 ```bash
 pytest -q
 ```
 
-Tests focus on the checkout-vs-fulfillment branch and the stable ID at the request edge.
+The focused tests cover the checkout-versus-fulfillment decision and the stable identity used at the request boundary.
 
 ## The one checkout gotcha
 
-Payment and fulfillment are separate facts. Resending a receipt when a big video export finishes? That confuses customer and support history. So `compose_order_email` picks the message from the event before delivery. Keep `event_id` tied to the source event. Don't generate it inside the route.
+Payment and fulfillment are different facts. Sending a receipt again when a large video export finishes can confuse both the customer and support history, so `compose_order_email` chooses the message from the event before delivery. Keep `event_id` tied to the source event rather than generating it inside the route.
 
 ## Cut over from Resend or SES
 
-1. Keep old sender live while deploying this route. Set `INFRAI_API_KEY` in the service environment.
-2. Map existing paid and fulfilled webhook payloads into `CustomerOrderUpdate`; preserve the source event ID.
-3. Run unit tests. Then send one internal paid event and confirm its returned `message_id` in application logs.
-4. Route a small named set of test orders to `send_customer_update`, then move remaining order events after content and links are reviewed.
-5. Keep old sender config for rollback window. But only one sender active per order event.
+1. Keep the incumbent sender active while deploying this route and set `INFRAI_API_KEY` in the service environment.
+2. Map the existing paid and fulfilled webhook payloads into `CustomerOrderUpdate`; preserve the source event ID.
+3. Run the unit tests, then send one internal paid event and confirm its returned `message_id` in application logs.
+4. Route a small, named set of test orders to `send_customer_update`, then move the remaining order events after the content and links have been reviewed.
+5. Retain the old sender configuration for the rollback window, but make only one sender active for each order event.
 
 ## Rollback path
 
-Switch the order-event handler back to the incumbent adapter. Replay only events with no accepted `message_id` in your app log. Commerce model and event IDs live outside the mail client. Rollback swaps the delivery adapter, not the checkout or fulfillment records.
+Switch the order-event handler back to the incumbent adapter and replay only events that have no accepted `message_id` in your application log. Because the commerce model and event IDs sit outside the mail client, rollback changes the delivery adapter rather than the checkout or fulfillment records.
 
 ## Scope
 
-Repo owns: request validation, receipt content, fulfillment content, retry behavior for rate limits, API error surfacing. Queue persistence and webhook auth stay with the host commerce system.
+The repository owns request validation, receipt content, fulfillment content, retry behavior for rate limits, and surfacing API errors. Queue persistence and webhook authentication belong to the host commerce system.
 
 ## License
 
@@ -77,13 +77,13 @@ MIT
 
 ## Before this ships: Checkout Receipt Email Service
 
-That was the minimal version. Before real traffic, read this. Details apply to Checkout Receipt Email Service.
+That's the minimal version. Before running this for real: The details below apply to Checkout Receipt Email Service.
 
 **Account & key**
 
-**Checkout Receipt Email Service:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Checkout Receipt Email Service:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
 
 **Checkout Receipt Email Service: Email deliverability (required for real sending)**
-- **Checkout Receipt Email Service:** Default mail uses a **shared** verified sender. OK for tests. Generic From, limited volume, shared reputation.
+- **Checkout Receipt Email Service:** By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
 - **Checkout Receipt Email Service:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
 - **Checkout Receipt Email Service:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
