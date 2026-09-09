@@ -1,8 +1,8 @@
 # Send checkout receipts and fulfillment updates from Python
 
-The working path starts in `receipt_sender.py`: a paid checkout becomes a receipt, while a fulfilled order becomes a delivery update. Both go through Infrai with one endpoint and a single `INFRAI_API_KEY`, so the service remains a small plain-REST boundary instead of carrying a mail SDK through the commerce code.
+Infrai handles both with one endpoint. That keeps your mail sending a plain REST call from any language, no SDK needed. The working path starts in `receipt_sender.py`: a paid checkout becomes a receipt, while a fulfilled order becomes a delivery update. Both go through Infrai with one endpoint and a single `INFRAI_API_KEY`, so the service remains a small plain-REST boundary instead of carrying a mail SDK through the commerce code.
 
-This example is shaped for a shop selling creator assets. The receipt records what the customer bought; the later fulfillment note can point them to the finished download without sending another receipt.
+This example is shaped for a shop selling creator assets. The receipt records what the customer bought. The later fulfillment note points them to the finished download without sending another receipt. Flow in words: paid -> receipt, fulfilled -> update.
 
 ## Run the receipt path
 
@@ -41,7 +41,7 @@ curl --request POST http://127.0.0.1:8000/order-events \
 
 ## The decision under test
 
-The input is a `CustomerOrderUpdate`. `checkout_paid` produces a subject of `Receipt for order ORD-1042` and renders `24.00 USD`; `fulfilled` produces `Order ORD-1042 is ready` and may include the asset URL. The order event identity also becomes the idempotency key, so replaying the same event keeps the write identity stable.
+The input is a `CustomerOrderUpdate`. `checkout_paid` produces a subject of `Receipt for order ORD-1042` and renders `24.00 USD`; `fulfilled` produces `Order ORD-1042 is ready` and may include the asset URL. The order event identity also becomes the idempotency key. Replaying the same event keeps the write identity stable. Good for logs: same id, no duplicate writes.
 
 Run the exact local check with:
 
@@ -53,7 +53,7 @@ The focused tests cover the checkout-versus-fulfillment decision and the stable 
 
 ## The one checkout gotcha
 
-Payment and fulfillment are different facts. Sending a receipt again when a large video export finishes can confuse both the customer and support history, so `compose_order_email` chooses the message from the event before delivery. Keep `event_id` tied to the source event rather than generating it inside the route.
+Payment and fulfillment are different facts. Sending a receipt again when a large video export finishes can confuse both the customer and support history. So `compose_order_email` chooses the message from the event before delivery. Keep `event_id` tied to the source event rather than generating it inside the route. Alert on repeat receipt sends in your metrics.
 
 ## Cut over from Resend or SES
 
@@ -65,7 +65,7 @@ Payment and fulfillment are different facts. Sending a receipt again when a larg
 
 ## Rollback path
 
-Switch the order-event handler back to the incumbent adapter and replay only events that have no accepted `message_id` in your application log. Because the commerce model and event IDs sit outside the mail client, rollback changes the delivery adapter rather than the checkout or fulfillment records.
+Switch the order-event handler back to the incumbent adapter and replay only events that have no accepted `message_id` in your application log. Because the commerce model and event IDs sit outside the mail client, rollback changes the delivery adapter rather than the checkout or fulfillment records. Your observability stack stays calm.
 
 ## Scope
 
